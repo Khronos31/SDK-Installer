@@ -1,0 +1,93 @@
+#!/bin/bash
+# Khronos | extrainst_ SDK
+
+set -eu
+
+OS="$(sw_vers -productVersion)"
+OS="${OS%%.*}"
+ARCH="$(arch)"
+SDKROOT="/usr/share/SDKs"
+
+if [ "${OS}" -ge 11 ]; then
+  SDK="iPhoneOS11.2.sdk"
+elif [ "${OS}" -ge 10 ]; then
+  SDK="iPhoneOS10.3.sdk"
+else
+  SDK="iPhoneOS9.3.sdk"
+fi
+
+download() {
+  mkdir -p "${SDKROOT}"
+  TMPSDKDIR="$(mktemp -d)"
+
+  if which curl >/dev/null; then
+    GET="curl -sSL"
+  elif which wget >/dev/null; then
+    GET="wget -q -O -"
+  else
+    echo 'missing command to download SDK'
+    exit 1
+  fi
+
+  URL="https://github.com/theos/sdks/archive/master.zip"
+  APPLE_OSS="https://opensource.apple.com/tarballs"
+
+  echo 'Downloading SDK...'
+  ${GET} "${URL}" > "${TMPSDKDIR}/SDKs.zip"
+  echo 'Unpacking SDK...'
+  test -e "${SDKROOT}/${SDK}"&&mv "${SDKROOT}/${SDK}" "${SDKROOT}/${SDK}~$(date +%s)~"
+  unzip -q "${TMPSDKDIR}/SDKs.zip" -d "${TMPSDKDIR}" "sdks-master/${SDK}/*"
+  mv "${TMPSDKDIR}/sdks-master/${SDK}" "${SDKROOT}"
+  rm -rf "${TMPSDKDIR}"
+
+: <<'##########'
+  if [ "${OS}" -ge 11 ]; then
+    LIBC="Libc-1244.20.1"
+    XNU="xnu-4570.20.62"
+
+    ${GET} "${APPLE_OSS}/Libc/${LIBC}.tar.gz"
+    test -e "${SDKROOT}/Libc/${LIBC}"&&mv "${SDKROOT}/Libc/${LIBC}" "${SDKROOT}/Libc/${LIBC}~$(date +%s)~"
+    mkdir -p "${SDKROOT}/Libc"
+    tar xf "${LIBC}.tar.gz" -C "${SDKROOT}/Libc" "${LIBC}/include"
+    rm -rf "${LIBC}.tar.gz"
+
+    ${GET} "${APPLE_OSS}/xnu/${XNU}.tar.gz"
+    test -e "${SDKROOT}/xnu/${XNU}"&&mv "${SDKROOT}/xnu/${XNU}" "${SDKROOT}/xnu/${XNU}~$(date +%s)~"
+    mkdir -p "${SDKROOT}/xnu"
+    tar xf "${XNU}.tar.gz" -C "${SDKROOT}/xnu" "${XNU}/bsd"
+    rm -rf "${XNU}.tar.gz"
+
+    printf '\nexport C_INCLUDE_PATH="${C_INCLUDE_PATH}:%s/Libc/%s/include:%s/xnu/%s/bsd"\n' "${SDKROOT}" "${LIBC}" "${SDKROOT}" "${XNU}" >>/etc/profile.d/sdk.sh
+  elif [ "${OS}" -lt 9 ]; then
+    mkdir -p /usr/lib/system
+    cp -n "${SDK}"/usr/lib/system/*.dylib /usr/lib/system
+  fi
+##########
+
+  if test -L "${SDKROOT}/iPhoneOS.sdk"; then
+    unlink "${SDKROOT}/iPhoneOS.sdk"
+  elif test -e "${SDKROOT}/iPhoneOS.sdk"; then
+    mv "${SDKROOT}/iPhoneOS.sdk" "${SDKROOT}/iPhoneOS.sdk~$(date +%s)~"
+  fi
+  
+  ln -s "${SDK}" "${SDKROOT}/iPhoneOS.sdk"
+}
+
+case "$1" in
+  "install")
+    download
+  ;;
+  "upgrade")
+    if [ ! -f "${SDKROOT}/iPhoneOS.sdk/usr/lib/libSystem.tbd" -a ! -f "${SDKROOT}/iPhoneOS.sdk/usr/lib/libSystem.dylib" ]; then
+      download
+    else
+      echo "$0: Not overwriting the current SDK."
+    fi
+  ;;
+  *)
+    echo 'Usage: (install|upgrade)'
+    exit 1
+  ;;
+esac
+
+exit 0

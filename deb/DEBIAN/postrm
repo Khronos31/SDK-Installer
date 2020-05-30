@@ -1,0 +1,51 @@
+#!/bin/bash
+# Khronos | postrm SDK
+
+set -eu
+
+OS="$(sw_vers -productVersion)"
+OS="${OS%%.*}"
+ARCH="$(arch)"
+SDKROOT="/usr/share/SDKs"
+
+if [ "${OS}" -ge 11 ]; then
+  SDK="iPhoneOS11.2.sdk"
+  # LIBC="Libc-1244.20.1"
+  # XNU="xnu-4570.20.62"
+elif [ "${OS}" -ge 10 ]; then
+  SDK="iPhoneOS10.3.sdk"
+else
+  SDK="iPhoneOS9.3.sdk"
+fi
+
+case "$1" in
+  purge|remove)
+    unlink "${SDKROOT}/iPhoneOS.sdk"
+    # unlink "${SDKROOT}/iPhoneSimulator.sdk"
+    # rm -rf "${SDKROOT}/${SDK}"
+    echo "This script **doesn't** remove SDK. You should remove ${SDKROOT}/${SDK} manually." >&2
+  ;;
+  upgrade)
+CHECK=(
+/usr/lib/libSystem.tbd
+/usr/lib/libobjc.tbd
+/usr/lib/libc++.tbd
+/usr/lib/libc.tbd
+/usr/lib/libm.tbd
+/usr/include/stdio.h
+/usr/include/unistd.h
+/System/Library/CoreServices/SystemVersion.plist
+/usr/include/stdint.h
+/usr/include/arm/endian.h
+) # Could add more, but it's unlikely this could go wrong.
+    for i in ${CHECK[@]}; do
+
+      if [[ ! -e "${SDKROOT}/${SDK}/$i" ]]; then
+        echo "$i is missing from ${SDKROOT}/${SDK}!"
+      fi
+
+    done
+  ;;
+esac
+
+exit 0
